@@ -1,36 +1,45 @@
-# Python Blockchain Implementation
+# Blockchain Implementation in Python
 
-A robust and efficient implementation of a blockchain system in Python, featuring proof-of-work consensus, transaction management, and network synchronization.
+A complete blockchain system implemented in Python, featuring core blockchain functionality, secure transactions, peer-to-peer networking, and a RESTful API.
 
 ## Features
 
-- **Proof of Work Consensus**: Implements a secure mining mechanism with dynamic difficulty adjustment
-- **Transaction Management**: Handles transactions with digital signatures and fee system
-- **Network Synchronization**: Supports multiple nodes with chain validation and conflict resolution
-- **Database Persistence**: SQLite-based storage for blocks, transactions, and network state
-- **Parallel Mining**: Optimized mining process using multiprocessing
-- **RESTful API**: Flask-based API for blockchain interaction
-- **Wallet Management**: Secure wallet creation and transaction signing
-- **Transaction Confirmation**: Configurable confirmation blocks for transaction finality
+- Core blockchain functionality (blocks, chain, mining)
+- Secure transaction system with digital signatures
+- Peer-to-peer networking using DHT
+- RESTful API for blockchain operations
+- PostgreSQL database for persistent storage
+- Wallet management with encrypted private keys
+- Configurable mining difficulty
+- Transaction pool management
+- Comprehensive logging system
+- Automatic database initialization
+- Environment-based configuration
 
 ## Requirements
 
 - Python 3.8+
-- SQLite3
-- Required Python packages (see `requirements.txt`)
+- PostgreSQL 12+
+- Flask
+- cryptography
+- pycryptodome
+- requests
+- python-dotenv
+- pytest
+- psycopg2-binary
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/python-blockchain.git
-cd python-blockchain
+git clone https://github.com/yourusername/blockchain.git
+cd blockchain
 ```
 
 2. Create and activate a virtual environment:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv env
+source env/bin/activate  # On Windows: env\Scripts\activate
 ```
 
 3. Install dependencies:
@@ -38,93 +47,187 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Usage
-
-### Starting the Blockchain Node
-
+4. Set up PostgreSQL:
 ```bash
-python -m blockchain.src.api
+# Install PostgreSQL if not already installed
+sudo apt-get install postgresql postgresql-contrib
+
+# Create a database
+sudo -u postgres psql
+postgres=# CREATE DATABASE blockchain;
+postgres=# CREATE USER blockchain_user WITH PASSWORD 'your_password';
+postgres=# GRANT ALL PRIVILEGES ON DATABASE blockchain TO blockchain_user;
+postgres=# \q
 ```
 
-The API server will start on `http://localhost:5000`
-
-### API Endpoints
-
-- `GET /chain`: Get the full blockchain
-- `POST /transactions/new`: Create a new transaction
-- `GET /mine`: Mine a new block
-- `POST /nodes/register`: Register a new node
-- `GET /nodes/resolve`: Resolve conflicts between nodes
-- `GET /wallet/address`: Get wallet address
-- `GET /wallet/balance`: Get wallet balance
-- `GET /difficulty`: Get current mining difficulty
-- `GET /transaction/confirmations/<tx_hash>`: Get transaction confirmations
-
-### Running Tests
-
+5. Configure environment variables:
 ```bash
-./run_tests.sh
+# Copy the example environment file
+cp .env.example .env
+
+# Edit the .env file with your settings
+nano .env
 ```
+
+The `.env` file contains all necessary configuration:
+- Database settings (host, port, credentials)
+- API settings (host, port, debug mode)
+- Blockchain parameters (difficulty, block time, mining reward)
+- Network settings (host, port, peer limits)
+- Security settings (key size, algorithms)
+- Logging settings (level, file)
 
 ## Project Structure
 
 ```
-python-blockchain/
-├── blockchain/
-│   ├── src/
-│   │   ├── __init__.py
-│   │   ├── api.py
-│   │   ├── block.py
-│   │   ├── blockchain.py
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── network.py
-│   │   ├── transaction.py
-│   │   └── wallet.py
-│   └── tests/
-│       ├── __init__.py
-│       ├── conftest.py
-│       ├── test_api.py
-│       ├── test_block.py
-│       ├── test_blockchain.py
-│       ├── test_database.py
-│       ├── test_network.py
-│       ├── test_transaction.py
-│       └── test_wallet.py
-├── migrations/
-├── requirements.txt
-├── setup.py
-├── run_tests.sh
-├── README.md
-└── LICENSE
+blockchain/
+├── api/
+│   └── app.py              # Flask API implementation
+├── core/
+│   ├── block.py            # Block class implementation
+│   ├── blockchain.py       # Blockchain class implementation
+│   ├── transaction.py      # Transaction class implementation
+│   └── transaction_pool.py # Transaction pool management
+├── crypto/
+│   └── wallet.py           # Wallet and cryptographic operations
+├── network/
+│   └── dht_node.py         # DHT node for networking
+├── utils/
+│   ├── database.py         # PostgreSQL database operations
+│   ├── initializer.py      # Project initialization
+│   ├── logger.py           # Logging configuration
+│   └── storage.py          # Storage management
+├── config.py               # Configuration settings
+└── __init__.py
 ```
 
-## Configuration
+## Usage
 
-The blockchain can be configured through environment variables or by modifying `config.py`:
+1. Start the node:
+```bash
+python -m blockchain.api.app
+```
 
-- `BLOCK_REWARD`: Reward for mining a block
-- `TRANSACTION_FEE`: Fee per transaction
-- `MAX_BLOCK_SIZE`: Maximum transactions per block
-- `DIFFICULTY_ADJUSTMENT_INTERVAL`: Blocks between difficulty adjustments
-- `TARGET_BLOCK_TIME`: Target time between blocks in seconds
-- `CONFIRMATION_BLOCKS`: Number of blocks needed for transaction confirmation
+The application will automatically:
+- Load environment variables
+- Initialize the database and create tables
+- Set up logging
+- Start the API server
+
+2. API Endpoints:
+
+### Blockchain Operations
+- `GET /chain` - Get the full blockchain
+- `POST /mine` - Mine a new block
+- `POST /transactions/new` - Create a new transaction
+- `GET /transactions/pending` - Get pending transactions
+
+### Network Operations
+- `POST /nodes/register` - Register a new node
+- `GET /nodes/resolve` - Resolve conflicts between nodes
+
+### Wallet Operations
+- `POST /wallet/new` - Create a new wallet
+- `GET /wallet/balance` - Get wallet balance
+
+## Testing
+
+1. Run all tests:
+```bash
+python -m pytest
+```
+
+2. Run specific test file:
+```bash
+python -m pytest tests/test_blockchain.py
+```
+
+3. Run tests with coverage:
+```bash
+python -m pytest --cov=blockchain tests/
+```
+
+4. Example test patterns:
+- See `tests/example_test.py` for common test patterns
+- Use fixtures for setup and teardown
+- Test both success and error cases
+- Use meaningful test names and docstrings
+
+## Development
+
+1. Create a new feature branch:
+```bash
+git checkout -b feature/your-feature-name
+```
+
+2. Make your changes:
+- Follow PEP 8 style guide
+- Add docstrings to new functions/classes
+- Update tests as needed
+- Update documentation
+
+3. Run tests before committing:
+```bash
+python -m pytest
+```
+
+4. Commit your changes:
+```bash
+git add .
+git commit -m "Description of your changes"
+```
+
+5. Push to your branch:
+```bash
+git push origin feature/your-feature-name
+```
+
+6. Create a Pull Request
+
+## Security Features
+
+- RSA key pairs for wallets
+- Digital signatures for transactions
+- Encrypted storage for private keys
+- Proof of work for mining
+- Input validation
+- Rate limiting
+- Environment-based configuration
+- Secure database connections
+
+## Troubleshooting
+
+1. Database Connection Issues:
+- Check PostgreSQL service status
+- Verify database credentials in .env
+- Ensure database and user exist
+- Check network connectivity
+
+2. API Issues:
+- Verify API settings in .env
+- Check if port is available
+- Review logs for errors
+
+3. Mining Issues:
+- Check difficulty settings
+- Verify wallet balance
+- Review transaction pool
 
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
-- Inspired by Bitcoin's blockchain implementation
-- Built with Python and Flask
-- Uses SQLite for data persistence
-- Implements proof-of-work consensus mechanism 
+- Cryptography library for cryptographic operations
+- Flask for the REST API
+- PostgreSQL for persistent storage
+- Python-dotenv for environment management 
