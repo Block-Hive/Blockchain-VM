@@ -131,7 +131,7 @@ sequenceDiagram
 
 5. Initialize the system:
    ```bash
-   python -m blockchain.utils.initializer
+   python -m blockchain.api.app
    ```
 
 ## 📚 API Documentation
