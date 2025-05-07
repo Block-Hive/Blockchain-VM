@@ -1,12 +1,34 @@
 from typing import Any, Dict, List, Optional, Callable
-from .instruction import Instruction, OpCode
+import logging
+from .instruction import Instruction, OpCode, InvalidOperandError
 from .memory import Memory
-from .stack import Stack
+from .stack import Stack, StackError
+
+logger = logging.getLogger(__name__)
+
+class VMError(Exception):
+    """Base exception for VM-related errors."""
+    pass
+
+class ProgramCounterError(VMError):
+    """Raised when program counter is invalid."""
+    pass
+
+class JumpError(VMError):
+    """Raised when jump instruction is invalid."""
+    pass
+
+class GasError(VMError):
+    """Raised when gas limit is exceeded."""
+    pass
 
 class VM:
     """
     Virtual Machine for executing smart contracts and blockchain operations.
     """
+    
+    MAX_PROGRAM_SIZE = 1024 * 1024  # 1MB max program size
+    MAX_JUMP_DISTANCE = 1024  # Maximum jump distance
     
     def __init__(self):
         """Initialize VM components."""
@@ -17,6 +39,8 @@ class VM:
         self.instructions: List[Instruction] = []
         self.gas_limit = 1000000
         self.gas_used = 0
+        self.halted = False
+        self.error_log: List[str] = []
         
         # Register instruction handlers
         self.handlers: Dict[OpCode, Callable] = {
@@ -62,19 +86,64 @@ class VM:
             OpCode.REVERT: self._handle_revert,
         }
     
+    def _validate_pc(self, pc: int) -> None:
+        """
+        Validate program counter value.
+        
+        Args:
+            pc: Program counter value to validate
+            
+        Raises:
+            ProgramCounterError: If program counter is invalid
+        """
+        if not isinstance(pc, int):
+            raise ProgramCounterError("Program counter must be an integer")
+        if pc < 0:
+            raise ProgramCounterError("Program counter cannot be negative")
+        if pc >= len(self.instructions):
+            raise ProgramCounterError("Program counter out of bounds")
+    
+    def _validate_jump(self, target: int) -> None:
+        """
+        Validate jump target.
+        
+        Args:
+            target: Jump target to validate
+            
+        Raises:
+            JumpError: If jump target is invalid
+        """
+        if not isinstance(target, int):
+            raise JumpError("Jump target must be an integer")
+        if target < 0:
+            raise JumpError("Jump target cannot be negative")
+        if target >= len(self.instructions):
+            raise JumpError("Jump target out of bounds")
+        if abs(target - self.pc) > self.MAX_JUMP_DISTANCE:
+            raise JumpError(f"Jump distance exceeds maximum of {self.MAX_JUMP_DISTANCE}")
+    
     def load_program(self, instructions: List[Instruction]) -> None:
         """
         Load a program into the VM.
         
         Args:
             instructions: List of instructions to execute
+            
+        Raises:
+            VMError: If program size exceeds limit
         """
+        if len(instructions) > self.MAX_PROGRAM_SIZE:
+            raise VMError(f"Program size exceeds maximum of {self.MAX_PROGRAM_SIZE} instructions")
+        
         self.instructions = instructions
         self.pc = 0
         self.running = False
+        self.halted = False
         self.gas_used = 0
+        self.error_log.clear()
         self.stack.clear()
         self.memory.clear_temp()
+        logger.info(f"Program loaded with {len(instructions)} instructions")
     
     def run(self) -> bool:
         """
@@ -84,25 +153,38 @@ class VM:
             True if execution completed successfully, False otherwise
         """
         if not self.instructions:
+            logger.error("No program loaded")
+            return False
+        
+        if self.halted:
+            logger.warning("VM is halted, cannot run program")
             return False
         
         self.running = True
         while self.running and self.pc < len(self.instructions):
-            if self.gas_used >= self.gas_limit:
-                self._handle_revert()
-                return False
-            
-            instruction = self.instructions[self.pc]
-            handler = self.handlers.get(instruction.opcode)
-            
-            if not handler:
-                raise ValueError(f"Unknown opcode: {instruction.opcode}")
-            
             try:
+                if self.gas_used >= self.gas_limit:
+                    logger.error("Gas limit exceeded")
+                    self._handle_revert()
+                    return False
+                
+                instruction = self.instructions[self.pc]
+                handler = self.handlers.get(instruction.opcode)
+                
+                if not handler:
+                    raise VMError(f"Unknown opcode: {instruction.opcode}")
+                
                 handler(instruction.operands)
                 self.pc += 1
+                
+            except (StackError, ProgramCounterError, JumpError, GasError) as e:
+                logger.error(f"VM error: {e}")
+                self.error_log.append(str(e))
+                self._handle_revert()
+                return False
             except Exception as e:
-                print(f"Error executing instruction: {e}")
+                logger.error(f"Unexpected error: {e}")
+                self.error_log.append(f"Unexpected error: {e}")
                 self._handle_revert()
                 return False
         
@@ -205,23 +287,41 @@ class VM:
     
     def _handle_jump(self, operands: List[Any]) -> None:
         """Handle JUMP instruction."""
-        self.pc = operands[0]
-        self.gas_used += 1
+        try:
+            target = int(operands[0])
+            self._validate_jump(target)
+            self.pc = target
+            self.gas_used += 1
+        except (ValueError, TypeError):
+            raise JumpError("Invalid jump target")
     
     def _handle_jumpi(self, operands: List[Any]) -> None:
         """Handle JUMPI instruction."""
-        condition = self.stack.pop()
-        if condition:
-            self.pc = operands[0]
-        self.gas_used += 1
+        try:
+            condition = self.stack.pop()
+            if condition:
+                target = int(operands[0])
+                self._validate_jump(target)
+                self.pc = target
+            self.gas_used += 1
+        except (ValueError, TypeError):
+            raise JumpError("Invalid jump target")
     
     def _handle_call(self, operands: List[Any]) -> None:
         """Handle CALL instruction."""
-        # Save return address
-        self.stack.push(self.pc + 1)
-        # Jump to function
-        self.pc = operands[0]
-        self.gas_used += 1
+        try:
+            target = int(operands[0])
+            self._validate_jump(target)
+            # Save return address
+            self.stack.push(self.pc + 1)
+            # Jump to function
+            self.pc = target
+            self.gas_used += 1
+        except (ValueError, TypeError):
+            raise JumpError("Invalid call target")
+        except StackError as e:
+            logger.error(f"Stack error during call: {e}")
+            raise
     
     def _handle_return(self, operands: List[Any]) -> None:
         """Handle RETURN instruction."""
@@ -268,6 +368,8 @@ class VM:
     
     def _handle_halt(self, operands: List[Any]) -> None:
         """Handle HALT instruction."""
+        logger.info("VM halted by instruction")
+        self.halted = True
         self.running = False
         self.gas_used += 1
     
@@ -279,7 +381,27 @@ class VM:
     
     def _handle_revert(self, operands: List[Any] = None) -> None:
         """Handle REVERT instruction."""
+        logger.warning("VM execution reverted")
         self.running = False
         self.stack.clear()
         self.memory.clear_temp()
-        self.gas_used += 1 
+        self.gas_used += 1
+    
+    def get_error_log(self) -> List[str]:
+        """Get the error log."""
+        return self.error_log.copy()
+    
+    def is_halted(self) -> bool:
+        """Check if VM is halted."""
+        return self.halted
+    
+    def reset(self) -> None:
+        """Reset VM state."""
+        self.pc = 0
+        self.running = False
+        self.halted = False
+        self.gas_used = 0
+        self.error_log.clear()
+        self.stack.clear()
+        self.memory.clear_temp()
+        logger.info("VM reset") 
